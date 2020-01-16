@@ -600,6 +600,12 @@ impl<'a> QueryFilter<'a> {
     ) -> QueryResult<()> {
         let column = self.column(attribute);
 
+        // With an empty list, the condition will always be false
+        if values.is_empty() {
+            out.push_sql("false");
+            return Ok(());
+        }
+
         // NULLs in SQL are very special creatures, and we need to treat
         // them special. For non-NULL values, we generate
         //   attribute {in|not in} (value1, value2, ...)

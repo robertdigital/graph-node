@@ -713,6 +713,17 @@ fn find_string_in() {
 }
 
 #[test]
+fn find_in_empty() {
+    // This used to generate invalid SQL
+    test_find(
+        vec![],
+        user_query()
+            .filter(EntityFilter::In("name".to_owned(), vec![]))
+            .order_by("name", ValueType::String, EntityOrder::Descending),
+    )
+}
+
+#[test]
 fn find_string_not_in() {
     test_find(
         vec!["1", "2"],
