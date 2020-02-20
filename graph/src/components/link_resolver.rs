@@ -16,7 +16,7 @@ pub struct JsonStreamValue {
 }
 
 pub type JsonValueStream =
-    Box<dyn Stream<Item=Result<JsonStreamValue, failure::Error>> + Send + 'static>;
+    Pin<Box<dyn Stream<Item=Result<JsonStreamValue, failure::Error>> + Send + 'static>>;
 
 /// Resolves links to subgraph manifests and resources referenced by them.
 pub trait LinkResolver: Send + Sync + 'static {

@@ -1,6 +1,7 @@
 use bytes::BytesMut;
 use futures01::{stream::poll_fn, try_ready};
 use futures03::stream::{FuturesUnordered, TryStreamExt as _};
+use futures03::pin_mut;
 use ipfs_api::{IpfsClient, response::ObjectStatResponse};
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
@@ -149,7 +150,7 @@ impl LinkResolverTrait for LinkResolver {
         &'a self,
         logger: &'a Logger,
         link: &'a Link,
-    ) -> DynFut<'a, Vec<u8>> {
+    ) -> DynTryFut<'a, Vec<u8>> {
         async move {
             // Discard the `/ipfs/` prefix (if present) to get the hash.
             let path = link.link.trim_start_matches("/ipfs/").to_owned();
@@ -170,46 +171,39 @@ impl LinkResolverTrait for LinkResolver {
             // design. Doc or unify.
             let max_file_size: Option<u64> = read_u64_from_env(MAX_IPFS_FILE_SIZE_VAR);
             restrict_file_size(&path, &stat, &max_file_size)?;
-            todo!();
-            /*
+            let path = path.clone();
             let retry_fut = if self.retry {
                 retry("ipfs.cat", &logger).no_limit()
             } else {
                 retry("ipfs.cat", &logger).limit(1)
             }.timeout(self.timeout);
 
-            // TODO: This additional fn is just here to deal with the fact that
-            // async closures are not yet ready. Tracking - https://github.com/rust-lang/rust/issues/62290
-            async fn read_and_cache_file(client: &IpfsClient, path: &str, cache: &Mutex<LruCache<String, Vec<u8>>>) -> Result<Vec<u8>, failure::Error> {
-                let cat = client.cat(path)
+            // TODO: Update retry() to be futures03 to avoid this extra clone and boilerplate
+            let result = retry_fut.run(move || {
+                let path = path.clone();
+                async move {
+                let data = client.cat(&path)
                     .map_ok(|b| BytesMut::from_iter(b.into_iter()))
-                    .try_concat().await?;
-                let data = cat.to_vec();
+                    .try_concat().await?
+                    .to_vec();
 
                 // Only cache files if they are not too large
                 if data.len() <= *MAX_IPFS_CACHE_FILE_SIZE as usize {
-                    let mut cache = cache.lock().unwrap();
-                    if !cache.contains_key(path) {
+                    let mut cache = self.cache.lock().unwrap();
+                    if !cache.contains_key(&path) {
                         cache.insert(path.to_owned(), data.clone());
                     }
                 }
-                Ok(data)
-            }
-
-            let path = path.clone();
-            // TODO: Update retry() to be futures03 to avoid this extra clone and boilerplate
-            Ok(retry_fut.run(move ||
-                read_and_cache_file(client, &path, &self.cache)
-                .boxed().compat()
-            ).compat().await?)
-            */
+                Result::<Vec<u8>, Error>::Ok(data)
+            }.boxed().compat()}).compat().await?;
+            Ok(result)
         }.boxed()
     }
 
     fn json_stream<'a>(
         &'a self,
         link: &'a Link,
-    ) -> DynFut<'a, JsonValueStream> {
+    ) -> DynTryFut<'a, JsonValueStream> {
 
         async move {
             // Discard the `/ipfs/` prefix (if present) to get the hash.
@@ -232,7 +226,7 @@ impl LinkResolverTrait for LinkResolver {
             // to the line number in the overall file
             let mut count = 0;
 
-            let stream: JsonValueStream = Box::new(poll_fn(
+            let stream: JsonValueStream = Box::pin(poll_fn(
                 move || -> Poll<Option<JsonStreamValue>, failure::Error> {
                     loop {
                         if let Some(offset) = buf.iter().position(|b| *b == b'\n') {
@@ -320,8 +314,14 @@ mod tests {
         let link = client.add(text.as_bytes()).await.unwrap().hash;
 
         let stream = LinkResolver::json_stream(&resolver, &Link { link }).await?;
-        todo!();
-        //stream.map_ok(|sv| sv.value).try_collect().await
+        stream.map_ok(|sv| sv.value).try_collect().await
+        /*
+        let result = Vec::new();
+        while let Some(sv) = stream.next().await {
+            result.push(result?.value);
+        }
+        Ok(result)
+        */
     }
 
     #[tokio::test]

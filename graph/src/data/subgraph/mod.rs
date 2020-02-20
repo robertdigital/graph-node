@@ -845,7 +845,7 @@ impl UnvalidatedSubgraphManifest {
         resolver: Arc<impl LinkResolver>,
         logger: &Logger,
     ) -> Result<Self, SubgraphManifestResolveError> {
-        let manifest = SubgraphManifest::resolve(link, resolver, logger).await?;
+        let manifest = SubgraphManifest::resolve(link, resolver.deref(), logger).await?;
         Ok(Self(manifest))
     }
 
@@ -947,7 +947,7 @@ impl SubgraphManifest {
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
     pub async fn resolve(
         link: Link,
-        resolver: Arc<impl LinkResolver>,
+        resolver: &impl LinkResolver,
         logger: &Logger,
     ) -> Result<Self, SubgraphManifestResolveError> {
         info!(logger, "Resolve manifest"; "link" => &link.link);

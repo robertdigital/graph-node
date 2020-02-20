@@ -692,17 +692,10 @@ async fn main() {
                 let subgraph_id = SubgraphDeploymentId::new(hash)
                     .expect("Subgraph hash must be a valid IPFS hash");
 
-                graph::spawn(
-                    subgraph_registrar
-                        .create_subgraph(name.clone())
-                        .and_then(move |_| {
-                            subgraph_registrar.create_subgraph_version(name, subgraph_id, node_id)
-                        })
-                        .map_err(|e| {
-                            panic!("Failed to deploy subgraph from `--subgraph` flag: {}", e)
-                        })
-                        .compat(),
-                );
+                graph::spawn( async move {
+                    subgraph_registrar.create_subgraph(name.clone()).compat().await?;
+                    subgraph_registrar.create_subgraph_version(name, subgraph_id, node_id).await
+                }.map_err(|e| panic!("Failed to deploy subgraph from `--subgraph` flag: {}", e)));
             }
 
             // Serve GraphQL queries over HTTP

@@ -53,7 +53,8 @@ pub mod prelude {
     pub use tokio;
     pub use web3;
 
-    pub type DynFut<'a, Out> = Pin<Box<dyn futures03::Future<Output=Result<Out, Error>> + Send + 'a>>;
+    pub type DynTryStream<'a, Out> = Pin<Box<dyn futures03::Stream<Item=Result<Out, Error>> + Send + 'a>>;
+    pub type DynTryFut<'a, Ok, Err=Error> = Pin<Box<dyn futures03::Future<Output=Result<Ok, Err>> + Send + 'a>>;
 
     pub use crate::components::ethereum::{
         BlockFinality, BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockStreamMetrics,

@@ -121,7 +121,8 @@ where
                     })
                     .for_each(move |assignment_event| {
                         assert_eq!(assignment_event.node_id(), &node_id);
-                        handle_assignment_event(assignment_event, provider.clone(), &logger_clone1)
+                        handle_assignment_event(assignment_event, provider.clone(), logger_clone1.clone())
+                        .boxed().compat()
                     })
                     .map_err(move |e| match e {
                         CancelableError::Cancel => panic!("assignment event stream canceled"),
@@ -253,15 +254,12 @@ where
                 let (sender, receiver) = futures01::sync::mpsc::channel::<()>(1);
                 for id in subgraph_ids {
                     let sender = sender.clone();
-                    let provider = provider.clone();
                     let logger = logger.clone();
 
                     // Blocking due to store interactions. Won't be blocking after #905.
                     graph::spawn_blocking(
-                        start_subgraph(id, &*provider, logger)
+                        start_subgraph(id, provider.clone(), logger)
                             .map(move |()| drop(sender))
-                            .map_err(|()| unreachable!())
-                            .compat(),
                     );
                 }
                 drop(sender);
@@ -292,92 +290,57 @@ where
         )))
     }
 
-    fn create_subgraph_version(
-        &self,
+    fn create_subgraph_version<'a>(
+        &'a self,
         name: SubgraphName,
         hash: SubgraphDeploymentId,
         node_id: NodeId,
-    ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
-        let store_for_validation = self.store.clone();
-        let store_for_subgraph_version = self.store.clone();
-        let chain_stores = self.chain_stores.clone();
-        let ethereum_adapters = self.ethereum_adapters.clone();
-        let version_switching_mode = self.version_switching_mode;
-
+    ) -> DynTryFut<'a, (), SubgraphRegistrarError> {
         let logger = self.logger_factory.subgraph_logger(&hash);
-        let logger_for_subgraph_version = logger.clone();
-        let logger_for_debug = logger.clone();
-        let name_inner = name.clone();
-        todo!();
-        /*
-        Box::new(
-            UnvalidatedSubgraphManifest::resolve(
+
+        async move {
+            let unvalidated = UnvalidatedSubgraphManifest::resolve(
                 hash.to_ipfs_link(),
                 self.resolver.clone(),
                 &logger,
-            )
-            .boxed()
-            .compat()
-            .map_err(SubgraphRegistrarError::ResolveError)
-            .and_then(move |unvalidated| {
-                future::result(unvalidated.validate(store_for_validation)).map_err(
-                    |validation_errors| {
-                        SubgraphRegistrarError::ManifestValidationError(validation_errors)
-                    },
-                )
-            })
-            .and_then(move |(manifest, validation_warnings)| {
-                let network_name = manifest.network_name();
-                chain_stores
-                    .clone()
-                    .get(&network_name)
-                    .ok_or(SubgraphRegistrarError::NetworkNotSupported(
-                        network_name.clone(),
-                    ))
-                    .and_then(move |chain_store| {
-                        ethereum_adapters
-                            .get(&network_name)
-                            .ok_or(SubgraphRegistrarError::NetworkNotSupported(
-                                network_name.clone(),
-                            ))
-                            .map(move |ethereum_adapter| {
-                                (
-                                    manifest,
-                                    ethereum_adapter.clone(),
-                                    chain_store.clone(),
-                                    validation_warnings,
-                                )
-                            })
-                    })
-            })
-            .and_then(
-                move |(manifest, ethereum_adapter, chain_store, validation_warnings)| {
-                    let manifest_id = manifest.id.clone();
-                    create_subgraph_version(
-                        &logger_for_subgraph_version,
-                        store_for_subgraph_version,
-                        chain_store.clone(),
-                        ethereum_adapter.clone(),
-                        name,
-                        manifest,
-                        node_id,
-                        version_switching_mode,
-                    )
-                    .map(|_| (manifest_id, validation_warnings))
-                },
-            )
-            .and_then(move |(manifest_id, validation_warnings)| {
-                debug!(
-                    logger_for_debug,
-                    "Wrote new subgraph version to store";
-                    "subgraph_name" => name_inner.to_string(),
-                    "subgraph_hash" => manifest_id.to_string(),
-                    "validation_warnings" => format!("{:?}", validation_warnings),
-                );
-                Ok(())
-            }),
-        )
-        */
+            ).map_err(SubgraphRegistrarError::ResolveError).await?;
+
+            let (manifest, validation_warnings) = unvalidated.validate(self.store.clone())
+                .map_err(SubgraphRegistrarError::ManifestValidationError)?;
+
+            let network_name = manifest.network_name();
+
+            let chain_store = self.chain_stores.get(&network_name)
+                .ok_or(SubgraphRegistrarError::NetworkNotSupported(
+                    network_name.clone(),
+                ))?;
+            let ethereum_adapter = self.ethereum_adapters
+                .get(&network_name)
+                .ok_or(SubgraphRegistrarError::NetworkNotSupported(
+                    network_name.clone(),
+                ))?;
+
+            let manifest_id = manifest.id.clone();
+            create_subgraph_version(
+                &logger,
+                self.store.clone(),
+                chain_store.clone(),
+                ethereum_adapter.clone(),
+                name.clone(),
+                manifest,
+                node_id,
+                self.version_switching_mode,
+            ).compat().await?;
+
+            debug!(
+                &logger,
+                "Wrote new subgraph version to store";
+                "subgraph_name" => name.to_string(),
+                "subgraph_hash" => manifest_id.to_string(),
+                "validation_warnings" => format!("{:?}", validation_warnings),
+            );
+            Ok(())
+        }.boxed()
     }
 
     fn remove_subgraph(
@@ -404,13 +367,11 @@ where
     }
 }
 
-fn handle_assignment_event<P>(
+async fn handle_assignment_event(
     event: AssignmentEvent,
-    provider: Arc<P>,
-    logger: &Logger,
-) -> Box<dyn Future<Item = (), Error = CancelableError<SubgraphAssignmentProviderError>> + Send>
-where
-    P: SubgraphAssignmentProviderTrait,
+    provider: Arc<impl SubgraphAssignmentProviderTrait>,
+    logger: Logger,
+) -> Result<(), CancelableError<SubgraphAssignmentProviderError>>
 {
     let logger = logger.to_owned();
 
@@ -420,11 +381,14 @@ where
         AssignmentEvent::Add {
             subgraph_id,
             node_id: _,
-        } => Box::new(start_subgraph(subgraph_id, &*provider, logger).map_err(|()| unreachable!())),
+        } => {
+            start_subgraph(subgraph_id, provider.clone(), logger).await;
+            Ok(())
+        } ,
         AssignmentEvent::Remove {
             subgraph_id,
             node_id: _,
-        } => Box::new(
+        } => {
             provider
                 .stop(subgraph_id)
                 .then(|result| match result {
@@ -432,17 +396,17 @@ where
                     Err(SubgraphAssignmentProviderError::NotRunning(_)) => Ok(()),
                     Err(e) => Err(e),
                 })
-                .map_err(CancelableError::Error),
-        ),
+                .map_err(CancelableError::Error)
+                .compat().await
+        },
     }
 }
 
-// Never errors.
-fn start_subgraph<P: SubgraphAssignmentProviderTrait>(
+async fn start_subgraph<>(
     subgraph_id: SubgraphDeploymentId,
-    provider: &P,
+    provider: Arc<impl SubgraphAssignmentProviderTrait>,
     logger: Logger,
-) -> impl Future<Item = (), Error = ()> + 'static {
+) {
     trace!(
         logger,
         "Start subgraph";
@@ -450,31 +414,28 @@ fn start_subgraph<P: SubgraphAssignmentProviderTrait>(
     );
 
     let start_time = Instant::now();
-    provider
-        .start(subgraph_id.clone())
-        .then(move |result| -> Result<(), _> {
-            debug!(
-                logger,
-                "Subgraph started";
-                "subgraph_id" => subgraph_id.to_string(),
-                "start_ms" => start_time.elapsed().as_millis()
-            );
+    let result = provider.start(&subgraph_id).await;
 
-            match result {
-                Ok(()) => Ok(()),
-                Err(SubgraphAssignmentProviderError::AlreadyRunning(_)) => Ok(()),
-                Err(e) => {
-                    // Errors here are likely an issue with the subgraph.
-                    error!(
-                        logger,
-                        "Subgraph instance failed to start";
-                        "error" => e.to_string(),
-                        "subgraph_id" => subgraph_id.to_string()
-                    );
-                    Ok(())
-                }
-            }
-        })
+    debug!(
+        logger,
+        "Subgraph started";
+        "subgraph_id" => subgraph_id.to_string(),
+        "start_ms" => start_time.elapsed().as_millis()
+    );
+
+    match result {
+        Ok(()) => (),
+        Err(SubgraphAssignmentProviderError::AlreadyRunning(_)) => (),
+        Err(e) => {
+            // Errors here are likely an issue with the subgraph.
+            error!(
+                logger,
+                "Subgraph instance failed to start";
+                "error" => e.to_string(),
+                "subgraph_id" => subgraph_id.to_string()
+            );
+        }
+    }
 }
 
 fn create_subgraph(

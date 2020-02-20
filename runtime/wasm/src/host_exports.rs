@@ -421,19 +421,18 @@ impl HostExports {
         let mut last_log = start;
         let logger = ctx.logger.new(o!("ipfs_map" => link.clone()));
 
-        todo!();
-        /*
-        block_on03(async {
-            let stream: JsonValueStream = self.link_resolver.json_stream(&Link { link }).await?;
-            futures03::stream::StreamExt::and_then(stream, move |sv| todo!());
-            stream.and_then(move |sv| {
+        let result = block_on03(async move {
+            let mut stream: JsonValueStream = self.link_resolver.json_stream(&Link { link: link }).await?;
+            let mut v = Vec::new();
+            while let Some(sv) = stream.next().await {
+                let sv = sv?;
                 let module = WasmiModule::from_valid_module_with_ctx(
                     valid_module.clone(),
                     ctx.clone(),
                     host_metrics.clone(),
                 )?;
                 let result =
-                    module.handle_json_callback(&*callback, &sv.value, &user_data);
+                    module.handle_json_callback(&callback, &sv.value, &user_data)?;
                 // Log progress every 15s
                 if last_log.elapsed() > Duration::from_secs(15) {
                     debug!(
@@ -444,42 +443,11 @@ impl HostExports {
                     );
                     last_log = Instant::now();
                 }
-                result
-            }).try_collect().await
-        })
-        */
-
-        /*
-        block_on03(
-            self.link_resolver
-                .json_stream(&Link { link })
-                .and_then(move |stream| {
-                    stream
-                        .and_then(move |sv| {
-                            let module = WasmiModule::from_valid_module_with_ctx(
-                                valid_module.clone(),
-                                ctx.clone(),
-                                host_metrics.clone(),
-                            )?;
-                            let result =
-                                module.handle_json_callback(&*callback, &sv.value, &user_data);
-                            // Log progress every 15s
-                            if last_log.elapsed() > Duration::from_secs(15) {
-                                debug!(
-                                    logger,
-                                    "Processed {} lines in {}s so far",
-                                    sv.line,
-                                    start.elapsed().as_secs()
-                                );
-                                last_log = Instant::now();
-                            }
-                            result
-                        })
-                        .collect()
-                })
-                .map_err(move |e| HostExportError(format!("{}: {}", errmsg, e.to_string()))),
-        )
-        */
+                v.push(result)
+            }
+            Ok(v)
+        });
+        result.map_err(move |e: Error| HostExportError(format!("{}: {}", errmsg, e.to_string())))
     }
 
     /// Expects a decimal string.
