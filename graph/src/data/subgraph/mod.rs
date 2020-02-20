@@ -1,7 +1,7 @@
 use ethabi::Contract;
 use failure;
 use failure::{Error, SyncFailure};
-use futures03::{future::{join, select, Either}, stream, pin_mut, StreamExt as _, Future};
+use futures03::{future::{join, try_join, try_join3, select, Either}, stream, pin_mut, StreamExt as _, Future};
 use parity_wasm;
 use parity_wasm::elements::Module;
 use serde::de;
@@ -596,13 +596,11 @@ impl UnresolvedMapping {
 
         info!(logger, "Resolve mapping"; "link" => &link.link);
 
-        let (abis, runtime) = join(
+        let (abis, runtime) = try_join(
             // resolve each abi
             collect_futures(abis.into_iter().map(|unresolved_abi| unresolved_abi.resolve(resolver, logger))),
             cat_module(resolver, &logger, &link),
-        ).await;
-        let abis = abis?;
-        let runtime = runtime?;
+        ).await?;
 
         Ok(Mapping {
             kind,
@@ -671,12 +669,10 @@ impl UnresolvedDataSource {
 
         info!(logger, "Resolve data source"; "name" => &name, "source" => &source.start_block);
 
-        let (mapping, templates) = join(
+        let (mapping, templates) = try_join(
             mapping.resolve(&*resolver, logger),
             collect_futures(templates.into_iter().map(|template| template.resolve(resolver, logger))),
-        ).await;
-        let mapping = mapping?;
-        let templates = templates?;
+        ).await?;
 
         Ok(DataSource {
             kind,
@@ -1038,15 +1034,11 @@ impl UnresolvedSubgraphManifest {
             }
         }
 
-        let (schema, data_sources, templates) = futures03::future::join3(
+        let (schema, data_sources, templates) = try_join3(
             schema.resolve(id.clone(), resolver, logger),
             collect_futures(data_sources.into_iter().map(|ds| ds.resolve(resolver, logger))),
             collect_futures(templates.into_iter().map(|template| template.resolve(resolver, logger)))
-        ).await;
-
-        let schema = schema?;
-        let data_sources = data_sources?;
-        let templates = templates?;
+        ).await?;
 
         Ok(SubgraphManifest {
             id,
@@ -1059,35 +1051,4 @@ impl UnresolvedSubgraphManifest {
             templates,
         })
     }
-}
-
-// TODO: This is a stop-gap to work around a bug with the rust compiler
-// which prevents us from using the futures03::try_join! macro
-// Tracking: https://github.com/rust-lang/rust/issues/69301
-async fn try_join2<TA, TB, E, A: Future<Output=Result<TA, E>>, B: Future<Output=Result<TB, E>>>(a: A, b: B) -> Result<(TA, TB), E> {
-    pin_mut!(a);
-    pin_mut!(b);
-    
-    match select(a, b).await {
-        Either::Left((a, b)) => {
-            let a = a?;
-            let b = b.await?;
-            Ok((a, b))
-        },
-        Either::Right((b, a)) => {
-            let b = b?;
-            let a = a.await?;
-            Ok((a, b))
-        }
-    }
-} 
-
-// TODO: This is a stop-gap to work around a bug with the rust compiler
-// which prevents us from using the futures03::try_join! macro
-// Tracking: https://github.com/rust-lang/rust/issues/69301
-async fn try_join3<TA, TB, TC, E, A: Future<Output=Result<TA, E>>, B: Future<Output=Result<TB, E>>, C: Future<Output=Result<TC, E>>>(a: A, b: B, c: C) -> Result<(TA, TB, TC), E> {
-    let ab = try_join2(a, b);
-    let abc = try_join2(ab, c).await?;
-    let ((a, b), c) = abc;
-    Ok((a, b, c))
 }
