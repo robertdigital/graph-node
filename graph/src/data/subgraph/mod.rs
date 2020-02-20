@@ -596,11 +596,13 @@ impl UnresolvedMapping {
 
         info!(logger, "Resolve mapping"; "link" => &link.link);
 
-        let (abis, runtime) = try_join2(
+        let (abis, runtime) = join(
             // resolve each abi
             collect_futures(abis.into_iter().map(|unresolved_abi| unresolved_abi.resolve(resolver, logger))),
             cat_module(resolver, &logger, &link),
-        ).await?;
+        ).await;
+        let abis = abis?;
+        let runtime = runtime?;
 
         Ok(Mapping {
             kind,
@@ -668,10 +670,13 @@ impl UnresolvedDataSource {
         } = self;
 
         info!(logger, "Resolve data source"; "name" => &name, "source" => &source.start_block);
-        let (mapping, templates) = try_join2(
+
+        let (mapping, templates) = join(
             mapping.resolve(&*resolver, logger),
             collect_futures(templates.into_iter().map(|template| template.resolve(resolver, logger))),
-        ).await?;
+        ).await;
+        let mapping = mapping?;
+        let templates = templates?;
 
         Ok(DataSource {
             kind,
@@ -1033,11 +1038,15 @@ impl UnresolvedSubgraphManifest {
             }
         }
 
-        let (schema, data_sources, templates) = try_join3(
+        let (schema, data_sources, templates) = futures03::future::join3(
             schema.resolve(id.clone(), resolver, logger),
             collect_futures(data_sources.into_iter().map(|ds| ds.resolve(resolver, logger))),
             collect_futures(templates.into_iter().map(|template| template.resolve(resolver, logger)))
-        ).await?;
+        ).await;
+
+        let schema = schema?;
+        let data_sources = data_sources?;
+        let templates = templates?;
 
         Ok(SubgraphManifest {
             id,
@@ -1051,7 +1060,6 @@ impl UnresolvedSubgraphManifest {
         })
     }
 }
-
 
 // TODO: This is a stop-gap to work around a bug with the rust compiler
 // which prevents us from using the futures03::try_join! macro
