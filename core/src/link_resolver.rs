@@ -1,7 +1,6 @@
 use bytes::BytesMut;
 use futures01::{stream::poll_fn, try_ready};
-use futures03::stream::{FuturesUnordered, TryStreamExt as _};
-use futures03::pin_mut;
+use futures03::stream::FuturesUnordered;
 use ipfs_api::{IpfsClient, response::ObjectStatResponse};
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;

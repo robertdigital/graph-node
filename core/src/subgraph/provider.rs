@@ -1,5 +1,4 @@
 use futures01::sync::mpsc::{channel, Receiver, Sender};
-use futures03::TryFutureExt as _;
 use std::collections::HashSet;
 use std::sync::Mutex;
 use std::ops::Deref as _;
@@ -15,7 +14,6 @@ use crate::subgraph::registrar::IPFS_SUBGRAPH_LOADING_TIMEOUT;
 use crate::DataSourceLoader;
 
 pub struct SubgraphAssignmentProvider<L, Q, S> {
-    logger: Logger,
     logger_factory: LoggerFactory,
     event_stream: Option<Receiver<SubgraphAssignmentProviderEvent>>,
     event_sink: Sender<SubgraphAssignmentProviderEvent>,
@@ -44,7 +42,6 @@ where
 
         // Create the subgraph provider
         SubgraphAssignmentProvider {
-            logger,
             logger_factory,
             event_stream: Some(event_stream),
             event_sink,
@@ -64,7 +61,6 @@ where
     /// Clones but forcing receivers to `None`.
     fn clone(&self) -> Self {
         SubgraphAssignmentProvider {
-            logger: self.logger.clone(),
             event_stream: None,
             event_sink: self.event_sink.clone(),
             resolver: self.resolver.clone(),

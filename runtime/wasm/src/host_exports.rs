@@ -11,7 +11,6 @@ use std::fmt;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 use web3::types::H160;
-use futures03::stream::TryStreamExt;
 
 use graph_graphql::prelude::validate_entity;
 

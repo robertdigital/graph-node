@@ -1,7 +1,7 @@
 use ethabi::Contract;
 use failure;
 use failure::{Error, SyncFailure};
-use futures03::{future::{join, try_join, try_join3, select, Either}, stream, pin_mut, StreamExt as _, Future};
+use futures03::{future::{try_join, try_join3}, stream, StreamExt as _, Future};
 use parity_wasm;
 use parity_wasm::elements::Module;
 use serde::de;

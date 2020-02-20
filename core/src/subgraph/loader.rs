@@ -6,7 +6,6 @@ use graph::data::subgraph::schema::*;
 use graph::data::subgraph::UnresolvedDataSource;
 use graph::prelude::{DataSourceLoader as DataSourceLoaderTrait, GraphQlRunner, *};
 use graph_graphql::graphql_parser::{parse_query, query as q};
-use futures03::TryFuture as _;
 
 pub struct DataSourceLoader<L, Q, S> {
     store: Arc<S>,
