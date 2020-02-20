@@ -34,9 +34,7 @@ pub fn spawn_blocking_allow_panic<T: Send + 'static>(
 }
 
 /// Panics if there is no current tokio::Runtime
-pub fn block_on_allow_panic<T>(
-    f: impl Future03<Output = T>,
-) -> T {
+pub fn block_on_allow_panic<T>(f: impl Future03<Output = T>) -> T {
     let rt = tokio::runtime::Handle::current();
     rt.enter(move || block_on(f))
 }

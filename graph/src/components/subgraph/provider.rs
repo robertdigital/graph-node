@@ -7,7 +7,11 @@ pub trait SubgraphAssignmentProvider:
     fn start<'a>(
         &'a self,
         id: &'a SubgraphDeploymentId,
-    ) -> Pin<Box<dyn futures03::Future<Output=Result<(), SubgraphAssignmentProviderError>> + Send + 'a>>;
+    ) -> Pin<
+        Box<
+            dyn futures03::Future<Output = Result<(), SubgraphAssignmentProviderError>> + Send + 'a,
+        >,
+    >;
 
     fn stop(
         &self,

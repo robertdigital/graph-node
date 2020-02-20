@@ -382,7 +382,7 @@ impl HostExports {
         block_on03(
             self.link_resolver
                 .cat(logger, &Link { link })
-                .map_err(HostExportError)
+                .map_err(HostExportError),
         )
     }
 
@@ -421,7 +421,8 @@ impl HostExports {
         let logger = ctx.logger.new(o!("ipfs_map" => link.clone()));
 
         let result = block_on03(async move {
-            let mut stream: JsonValueStream = self.link_resolver.json_stream(&Link { link: link }).await?;
+            let mut stream: JsonValueStream =
+                self.link_resolver.json_stream(&Link { link: link }).await?;
             let mut v = Vec::new();
             while let Some(sv) = stream.next().await {
                 let sv = sv?;
@@ -430,8 +431,7 @@ impl HostExports {
                     ctx.clone(),
                     host_metrics.clone(),
                 )?;
-                let result =
-                    module.handle_json_callback(&callback, &sv.value, &user_data)?;
+                let result = module.handle_json_callback(&callback, &sv.value, &user_data)?;
                 // Log progress every 15s
                 if last_log.elapsed() > Duration::from_secs(15) {
                     debug!(
@@ -676,12 +676,10 @@ fn test_string_to_h160_with_0x() {
     )
 }
 
-fn block_on<I, ER>(
-    future: impl Future<Item = I, Error = ER>,
-) -> Result<I, ER> {
+fn block_on<I, ER>(future: impl Future<Item = I, Error = ER>) -> Result<I, ER> {
     block_on03(future.compat())
 }
 
-fn block_on03<T>(future: impl futures03::Future<Output=T>) -> T {
+fn block_on03<T>(future: impl futures03::Future<Output = T>) -> T {
     graph::block_on_allow_panic(future)
 }

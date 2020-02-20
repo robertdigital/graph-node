@@ -1,7 +1,10 @@
 use ethabi::Contract;
 use failure;
 use failure::{Error, SyncFailure};
-use futures03::{future::{try_join, try_join3}, stream, StreamExt as _, Future};
+use futures03::{
+    future::{try_join, try_join3},
+    stream, Future, StreamExt as _,
+};
 use parity_wasm;
 use parity_wasm::elements::Module;
 use serde::de;
@@ -564,13 +567,19 @@ pub struct Mapping {
 }
 
 // TODO: This seems to be a part of the stdlib (FuturesOrdered.collect()), but I can't get it working
-async fn collect_futures<Out, Fut: Future<Output = Result<Out, failure::Error>>>(futures: impl Iterator<Item=Fut>) -> Result<Vec<Out>, failure::Error> {
+async fn collect_futures<Out, Fut: Future<Output = Result<Out, failure::Error>>>(
+    futures: impl Iterator<Item = Fut>,
+) -> Result<Vec<Out>, failure::Error> {
     let mut ordered: stream::FuturesOrdered<_> = futures.collect();
     let mut collected = Vec::new();
     while let Some(result) = ordered.next().await {
         match result {
-            Ok(v) => { collected.push(v); }
-            Err(e) => { return Err(e); },
+            Ok(v) => {
+                collected.push(v);
+            }
+            Err(e) => {
+                return Err(e);
+            }
         }
     }
     Ok(collected)
@@ -598,9 +607,13 @@ impl UnresolvedMapping {
 
         let (abis, runtime) = try_join(
             // resolve each abi
-            collect_futures(abis.into_iter().map(|unresolved_abi| unresolved_abi.resolve(resolver, logger))),
+            collect_futures(
+                abis.into_iter()
+                    .map(|unresolved_abi| unresolved_abi.resolve(resolver, logger)),
+            ),
             cat_module(resolver, &logger, &link),
-        ).await?;
+        )
+        .await?;
 
         Ok(Mapping {
             kind,
@@ -617,7 +630,11 @@ impl UnresolvedMapping {
     }
 }
 
-async fn cat_module(resolver: &impl LinkResolver, logger: &Logger, link: &Link) -> Result<Arc<Module>, failure::Error> {
+async fn cat_module(
+    resolver: &impl LinkResolver,
+    logger: &Logger,
+    link: &Link,
+) -> Result<Arc<Module>, failure::Error> {
     let module_bytes = resolver.cat(logger, link).await?;
     Ok(Arc::new(parity_wasm::deserialize_buffer(&module_bytes)?))
 }
@@ -671,8 +688,13 @@ impl UnresolvedDataSource {
 
         let (mapping, templates) = try_join(
             mapping.resolve(&*resolver, logger),
-            collect_futures(templates.into_iter().map(|template| template.resolve(resolver, logger))),
-        ).await?;
+            collect_futures(
+                templates
+                    .into_iter()
+                    .map(|template| template.resolve(resolver, logger)),
+            ),
+        )
+        .await?;
 
         Ok(DataSource {
             kind,
@@ -952,11 +974,15 @@ impl SubgraphManifest {
     ) -> Result<Self, SubgraphManifestResolveError> {
         info!(logger, "Resolve manifest"; "link" => &link.link);
 
-        let file_bytes = resolver.cat(logger, &link).await.map_err(SubgraphManifestResolveError::ResolveError)?;
+        let file_bytes = resolver
+            .cat(logger, &link)
+            .await
+            .map_err(SubgraphManifestResolveError::ResolveError)?;
 
-        let file = String::from_utf8(file_bytes.to_vec()).map_err(|_| SubgraphManifestResolveError::NonUtf8)?;
+        let file = String::from_utf8(file_bytes.to_vec())
+            .map_err(|_| SubgraphManifestResolveError::NonUtf8)?;
         let mut raw: serde_yaml::Value = serde_yaml::from_str(&file)?;
-        
+
         let raw_mapping = raw
             .as_mapping_mut()
             .ok_or(SubgraphManifestResolveError::InvalidFormat)?;
@@ -974,11 +1000,14 @@ impl SubgraphManifest {
             serde_yaml::Value::from("location"),
             serde_yaml::Value::from(link.link),
         );
-        
+
         // Parse the YAML data into an UnresolvedSubgraphManifest
         let unresolved: UnresolvedSubgraphManifest = serde_yaml::from_value(raw)?;
 
-        unresolved.resolve(&*resolver, logger).await.map_err(SubgraphManifestResolveError::ResolveError)
+        unresolved
+            .resolve(&*resolver, logger)
+            .await
+            .map_err(SubgraphManifestResolveError::ResolveError)
     }
 
     pub fn network_name(&self) -> String {
@@ -1036,9 +1065,18 @@ impl UnresolvedSubgraphManifest {
 
         let (schema, data_sources, templates) = try_join3(
             schema.resolve(id.clone(), resolver, logger),
-            collect_futures(data_sources.into_iter().map(|ds| ds.resolve(resolver, logger))),
-            collect_futures(templates.into_iter().map(|template| template.resolve(resolver, logger)))
-        ).await?;
+            collect_futures(
+                data_sources
+                    .into_iter()
+                    .map(|ds| ds.resolve(resolver, logger)),
+            ),
+            collect_futures(
+                templates
+                    .into_iter()
+                    .map(|template| template.resolve(resolver, logger)),
+            ),
+        )
+        .await?;
 
         Ok(SubgraphManifest {
             id,

@@ -61,8 +61,7 @@ pub struct JsonRpcServer<R> {
     logger: Logger,
 }
 
-impl<R: SubgraphRegistrar> JsonRpcServer<R>
-{
+impl<R: SubgraphRegistrar> JsonRpcServer<R> {
     /// Handler for the `subgraph_create` endpoint.
     fn create_handler(
         &self,
@@ -254,7 +253,7 @@ where
 
         let me = arc_self.clone();
         let sender = task_sender.clone();
-        
+
         handler.add_method("subgraph_deploy", move |params: Params| {
             let me = me.clone();
             Box::pin(tokio02_spawn(
@@ -262,7 +261,8 @@ where
                 async move {
                     let params = params.parse()?;
                     me.deploy_handler(params).await
-                }.boxed()
+                }
+                .boxed(),
             ))
             .compat()
         });

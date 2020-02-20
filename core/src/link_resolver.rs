@@ -1,7 +1,7 @@
 use bytes::BytesMut;
 use futures01::{stream::poll_fn, try_ready};
 use futures03::stream::FuturesUnordered;
-use ipfs_api::{IpfsClient, response::ObjectStatResponse};
+use ipfs_api::{response::ObjectStatResponse, IpfsClient};
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
 use std::env;
@@ -66,10 +66,11 @@ async fn select_fastest_client_with_stat<'a>(
 ) -> Result<(ObjectStatResponse, &'a IpfsClient), failure::Error> {
     let mut err: Option<failure::Error> = None;
 
-    let mut stats: FuturesUnordered<_> = clients.iter()
+    let mut stats: FuturesUnordered<_> = clients
+        .iter()
         .map(|c| tokio::time::timeout(timeout, c.object_stat(path).map_ok(move |s| (s, c))))
         .collect();
-    
+
     while let Some(result) = stats.next().await {
         match result {
             // If there is a timeout, use that error if it's the only error.
@@ -78,13 +79,19 @@ async fn select_fastest_client_with_stat<'a>(
                 if err.is_none() {
                     err = Some(e.into())
                 }
-            },
-            Ok(Err(e)) => { err = Some(e.into()); },
-            Ok(Ok(value)) => { return Ok(value); }
+            }
+            Ok(Err(e)) => {
+                err = Some(e.into());
+            }
+            Ok(Ok(value)) => {
+                return Ok(value);
+            }
         }
     }
 
-    Err(err.unwrap_or_else(|| format_err!("No IPFS clients were supplied to handle the call to object_stat")))
+    Err(err.unwrap_or_else(|| {
+        format_err!("No IPFS clients were supplied to handle the call to object_stat")
+    }))
 }
 
 // Returns an error if the stat is bigger than the `max_file_bytes`
@@ -145,11 +152,7 @@ impl LinkResolverTrait for LinkResolver {
     }
 
     /// Supports links of the form `/ipfs/ipfs_hash` or just `ipfs_hash`.
-    fn cat<'a>(
-        &'a self,
-        logger: &'a Logger,
-        link: &'a Link,
-    ) -> DynTryFut<'a, Vec<u8>> {
+    fn cat<'a>(&'a self, logger: &'a Logger, link: &'a Link) -> DynTryFut<'a, Vec<u8>> {
         async move {
             // Discard the `/ipfs/` prefix (if present) to get the hash.
             let path = link.link.trim_start_matches("/ipfs/").to_owned();
@@ -160,7 +163,8 @@ impl LinkResolverTrait for LinkResolver {
             }
             trace!(logger, "IPFS cache miss"; "hash" => &path);
 
-            let (stat, client) = select_fastest_client_with_stat(&self.clients, &path, self.timeout).await?;
+            let (stat, client) =
+                select_fastest_client_with_stat(&self.clients, &path, self.timeout).await?;
 
             // TODO: Having an env variable here seems like a problem for consensus.
             // Index Nodes should not disagree on whether the file should be read.
@@ -175,48 +179,54 @@ impl LinkResolverTrait for LinkResolver {
                 retry("ipfs.cat", &logger).no_limit()
             } else {
                 retry("ipfs.cat", &logger).limit(1)
-            }.timeout(self.timeout);
+            }
+            .timeout(self.timeout);
 
             // TODO: Update retry() to be futures03 to avoid this extra clone and boilerplate
-            let result = retry_fut.run(move || {
-                let path = path.clone();
-                async move {
-                let data = client.cat(&path)
-                    .map_ok(|b| BytesMut::from_iter(b.into_iter()))
-                    .try_concat().await?
-                    .to_vec();
+            let result = retry_fut
+                .run(move || {
+                    let path = path.clone();
+                    async move {
+                        let data = client
+                            .cat(&path)
+                            .map_ok(|b| BytesMut::from_iter(b.into_iter()))
+                            .try_concat()
+                            .await?
+                            .to_vec();
 
-                // Only cache files if they are not too large
-                if data.len() <= *MAX_IPFS_CACHE_FILE_SIZE as usize {
-                    let mut cache = self.cache.lock().unwrap();
-                    if !cache.contains_key(&path) {
-                        cache.insert(path.to_owned(), data.clone());
+                        // Only cache files if they are not too large
+                        if data.len() <= *MAX_IPFS_CACHE_FILE_SIZE as usize {
+                            let mut cache = self.cache.lock().unwrap();
+                            if !cache.contains_key(&path) {
+                                cache.insert(path.to_owned(), data.clone());
+                            }
+                        }
+                        Result::<Vec<u8>, Error>::Ok(data)
                     }
-                }
-                Result::<Vec<u8>, Error>::Ok(data)
-            }.boxed().compat()}).compat().await?;
+                    .boxed()
+                    .compat()
+                })
+                .compat()
+                .await?;
             Ok(result)
-        }.boxed()
+        }
+        .boxed()
     }
 
-    fn json_stream<'a>(
-        &'a self,
-        link: &'a Link,
-    ) -> DynTryFut<'a, JsonValueStream> {
-
+    fn json_stream<'a>(&'a self, link: &'a Link) -> DynTryFut<'a, JsonValueStream> {
         async move {
             // Discard the `/ipfs/` prefix (if present) to get the hash.
             let path = link.link.trim_start_matches("/ipfs/");
 
-            let (stat, client) = select_fastest_client_with_stat(&self.clients, path, self.timeout).await?;
+            let (stat, client) =
+                select_fastest_client_with_stat(&self.clients, path, self.timeout).await?;
 
-            let max_file_size =
-                read_u64_from_env(MAX_IPFS_MAP_FILE_SIZE_VAR)
+            let max_file_size = read_u64_from_env(MAX_IPFS_MAP_FILE_SIZE_VAR)
                 .or(Some(DEFAULT_MAX_IPFS_MAP_FILE_SIZE));
             restrict_file_size(path, &stat, &max_file_size)?;
 
             let mut stream = client.cat(&path).compat().fuse();
-            
+
             let mut buf = BytesMut::with_capacity(1024);
 
             // Count the number of lines we've already successfully deserialized.
@@ -225,8 +235,8 @@ impl LinkResolverTrait for LinkResolver {
             // to the line number in the overall file
             let mut count = 0;
 
-            let stream: JsonValueStream = Box::pin(poll_fn(
-                move || -> Poll<Option<JsonStreamValue>, failure::Error> {
+            let stream: JsonValueStream = Box::pin(
+                poll_fn(move || -> Poll<Option<JsonStreamValue>, failure::Error> {
                     loop {
                         if let Some(offset) = buf.iter().position(|b| *b == b'\n') {
                             let line_bytes = buf.split_to(offset + 1);
@@ -270,18 +280,20 @@ impl LinkResolverTrait for LinkResolver {
                             }
                         }
                     }
-                },
-            ).compat());
+                })
+                .compat(),
+            );
             Ok(stream)
-        }.boxed()
+        }
+        .boxed()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
     use ipfs_api::IpfsClient;
+    use serde_json::json;
 
     #[tokio::test]
     async fn max_file_size() {

@@ -121,8 +121,13 @@ where
                     })
                     .for_each(move |assignment_event| {
                         assert_eq!(assignment_event.node_id(), &node_id);
-                        handle_assignment_event(assignment_event, provider.clone(), logger_clone1.clone())
-                        .boxed().compat()
+                        handle_assignment_event(
+                            assignment_event,
+                            provider.clone(),
+                            logger_clone1.clone(),
+                        )
+                        .boxed()
+                        .compat()
                     })
                     .map_err(move |e| match e {
                         CancelableError::Cancel => panic!("assignment event stream canceled"),
@@ -258,8 +263,7 @@ where
 
                     // Blocking due to store interactions. Won't be blocking after #905.
                     graph::spawn_blocking(
-                        start_subgraph(id, provider.clone(), logger)
-                            .map(move |()| drop(sender))
+                        start_subgraph(id, provider.clone(), logger).map(move |()| drop(sender)),
                     );
                 }
                 drop(sender);
@@ -303,22 +307,22 @@ where
                 hash.to_ipfs_link(),
                 self.resolver.clone(),
                 &logger,
-            ).map_err(SubgraphRegistrarError::ResolveError).await?;
+            )
+            .map_err(SubgraphRegistrarError::ResolveError)
+            .await?;
 
-            let (manifest, validation_warnings) = unvalidated.validate(self.store.clone())
+            let (manifest, validation_warnings) = unvalidated
+                .validate(self.store.clone())
                 .map_err(SubgraphRegistrarError::ManifestValidationError)?;
 
             let network_name = manifest.network_name();
 
-            let chain_store = self.chain_stores.get(&network_name)
-                .ok_or(SubgraphRegistrarError::NetworkNotSupported(
-                    network_name.clone(),
-                ))?;
-            let ethereum_adapter = self.ethereum_adapters
-                .get(&network_name)
-                .ok_or(SubgraphRegistrarError::NetworkNotSupported(
-                    network_name.clone(),
-                ))?;
+            let chain_store = self.chain_stores.get(&network_name).ok_or(
+                SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
+            )?;
+            let ethereum_adapter = self.ethereum_adapters.get(&network_name).ok_or(
+                SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
+            )?;
 
             let manifest_id = manifest.id.clone();
             create_subgraph_version(
@@ -330,7 +334,9 @@ where
                 manifest,
                 node_id,
                 self.version_switching_mode,
-            ).compat().await?;
+            )
+            .compat()
+            .await?;
 
             debug!(
                 &logger,
@@ -340,7 +346,8 @@ where
                 "validation_warnings" => format!("{:?}", validation_warnings),
             );
             Ok(())
-        }.boxed()
+        }
+        .boxed()
     }
 
     fn remove_subgraph(
@@ -371,8 +378,7 @@ async fn handle_assignment_event(
     event: AssignmentEvent,
     provider: Arc<impl SubgraphAssignmentProviderTrait>,
     logger: Logger,
-) -> Result<(), CancelableError<SubgraphAssignmentProviderError>>
-{
+) -> Result<(), CancelableError<SubgraphAssignmentProviderError>> {
     let logger = logger.to_owned();
 
     debug!(logger, "Received assignment event: {:?}", event);
@@ -384,7 +390,7 @@ async fn handle_assignment_event(
         } => {
             start_subgraph(subgraph_id, provider.clone(), logger).await;
             Ok(())
-        } ,
+        }
         AssignmentEvent::Remove {
             subgraph_id,
             node_id: _,
@@ -397,12 +403,13 @@ async fn handle_assignment_event(
                     Err(e) => Err(e),
                 })
                 .map_err(CancelableError::Error)
-                .compat().await
-        },
+                .compat()
+                .await
+        }
     }
 }
 
-async fn start_subgraph<>(
+async fn start_subgraph(
     subgraph_id: SubgraphDeploymentId,
     provider: Arc<impl SubgraphAssignmentProviderTrait>,
     logger: Logger,

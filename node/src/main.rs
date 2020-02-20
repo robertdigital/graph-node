@@ -349,60 +349,60 @@ async fn main() {
     // Create a component and subgraph logger factory
     let logger_factory = LoggerFactory::new(logger.clone(), elastic_config);
 
-    
-
     // Try to create IPFS clients for each URL
-    let ipfs_clients: Vec<_> = ipfs_addresses.into_iter().map(|ipfs_address| {
-        info!(
-            logger,
-            "Trying IPFS node at: {}",
-            SafeDisplay(&ipfs_address)
-        );
+    let ipfs_clients: Vec<_> = ipfs_addresses
+        .into_iter()
+        .map(|ipfs_address| {
+            info!(
+                logger,
+                "Trying IPFS node at: {}",
+                SafeDisplay(&ipfs_address)
+            );
 
-        let ipfs_client = match IpfsClient::new_from_uri(&ipfs_address) {
-            Ok(ipfs_client) => ipfs_client,
-            Err(e) => {
-                error!(
-                    logger,
-                    "Failed to create IPFS client for `{}`: {}",
-                    SafeDisplay(&ipfs_address),
-                    e
-                );
-                panic!("Could not connect to IPFS");
-            }
-        };
-
-        // Test the IPFS client by getting the version from the IPFS daemon
-        let ipfs_test = ipfs_client.clone();
-        let ipfs_ok_logger = logger.clone();
-        let ipfs_err_logger = logger.clone();
-        let ipfs_address_for_ok = ipfs_address.clone();
-        let ipfs_address_for_err = ipfs_address.clone();
-        graph::spawn(async move {
-            ipfs_test
-                .version()
-                .map_err(move |e| {
+            let ipfs_client = match IpfsClient::new_from_uri(&ipfs_address) {
+                Ok(ipfs_client) => ipfs_client,
+                Err(e) => {
                     error!(
-                        ipfs_err_logger,
-                        "Is there an IPFS node running at \"{}\"?",
-                        SafeDisplay(ipfs_address_for_err),
+                        logger,
+                        "Failed to create IPFS client for `{}`: {}",
+                        SafeDisplay(&ipfs_address),
+                        e
                     );
-                    panic!("Failed to connect to IPFS: {}", e);
-                })
-                .map_ok(move |_| {
-                    info!(
-                        ipfs_ok_logger,
-                        "Successfully connected to IPFS node at: {}",
-                        SafeDisplay(ipfs_address_for_ok)
-                    );
-                })
-                .await
-        });
+                    panic!("Could not connect to IPFS");
+                }
+            };
 
-        ipfs_client
-    }).collect();
+            // Test the IPFS client by getting the version from the IPFS daemon
+            let ipfs_test = ipfs_client.clone();
+            let ipfs_ok_logger = logger.clone();
+            let ipfs_err_logger = logger.clone();
+            let ipfs_address_for_ok = ipfs_address.clone();
+            let ipfs_address_for_err = ipfs_address.clone();
+            graph::spawn(async move {
+                ipfs_test
+                    .version()
+                    .map_err(move |e| {
+                        error!(
+                            ipfs_err_logger,
+                            "Is there an IPFS node running at \"{}\"?",
+                            SafeDisplay(ipfs_address_for_err),
+                        );
+                        panic!("Failed to connect to IPFS: {}", e);
+                    })
+                    .map_ok(move |_| {
+                        info!(
+                            ipfs_ok_logger,
+                            "Successfully connected to IPFS node at: {}",
+                            SafeDisplay(ipfs_address_for_ok)
+                        );
+                    })
+                    .await
+            });
 
-    
+            ipfs_client
+        })
+        .collect();
+
     // TODO: Link Resolver Here
     // Convert the client into a link resolver
     let link_resolver = Arc::new(LinkResolver::from(ipfs_clients));
@@ -692,10 +692,18 @@ async fn main() {
                 let subgraph_id = SubgraphDeploymentId::new(hash)
                     .expect("Subgraph hash must be a valid IPFS hash");
 
-                graph::spawn( async move {
-                    subgraph_registrar.create_subgraph(name.clone()).compat().await?;
-                    subgraph_registrar.create_subgraph_version(name, subgraph_id, node_id).await
-                }.map_err(|e| panic!("Failed to deploy subgraph from `--subgraph` flag: {}", e)));
+                graph::spawn(
+                    async move {
+                        subgraph_registrar
+                            .create_subgraph(name.clone())
+                            .compat()
+                            .await?;
+                        subgraph_registrar
+                            .create_subgraph_version(name, subgraph_id, node_id)
+                            .await
+                    }
+                    .map_err(|e| panic!("Failed to deploy subgraph from `--subgraph` flag: {}", e)),
+                );
             }
 
             // Serve GraphQL queries over HTTP
@@ -738,8 +746,10 @@ async fn main() {
     // task that simply responds to "ping" requests. Then spawn a separate
     // thread to periodically ping it and check responsiveness.
     let (ping_send, ping_receive) = mpsc::channel::<crossbeam_channel::Sender<()>>(1);
-    graph::spawn(ping_receive.for_each(move |pong_send| async move {
-        let _ = pong_send.clone().send(());
+    graph::spawn(ping_receive.for_each(move |pong_send| {
+        async move {
+            let _ = pong_send.clone().send(());
+        }
     }));
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(1));

@@ -257,7 +257,10 @@ where
                         future::ok(self5.convert_to_unresolved_data_sources(typed_entities))
                     })
                     .and_then(move |unresolved_data_sources| {
-                        self6.resolve_data_sources(unresolved_data_sources, logger).boxed().compat()
+                        self6
+                            .resolve_data_sources(unresolved_data_sources, logger)
+                            .boxed()
+                            .compat()
                     })
                     .map(move |data_sources| {
                         if data_sources.is_empty() {

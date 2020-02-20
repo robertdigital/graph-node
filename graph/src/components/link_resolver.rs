@@ -1,9 +1,9 @@
 use failure;
-use futures03::{Future, prelude::Stream};
+use futures03::{prelude::Stream, Future};
 use serde_json::Value;
 use slog::Logger;
-use std::time::Duration;
 use std::pin::Pin;
+use std::time::Duration;
 
 use crate::data::subgraph::Link;
 
@@ -16,7 +16,7 @@ pub struct JsonStreamValue {
 }
 
 pub type JsonValueStream =
-    Pin<Box<dyn Stream<Item=Result<JsonStreamValue, failure::Error>> + Send + 'static>>;
+    Pin<Box<dyn Stream<Item = Result<JsonStreamValue, failure::Error>> + Send + 'static>>;
 
 /// Resolves links to subgraph manifests and resources referenced by them.
 pub trait LinkResolver: Send + Sync + 'static {
@@ -35,7 +35,7 @@ pub trait LinkResolver: Send + Sync + 'static {
         &'a self,
         logger: &'a Logger,
         link: &'a Link,
-    ) -> Pin<Box<dyn Future<Output=Result<Vec<u8>, failure::Error>> + Send + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, failure::Error>> + Send + 'a>>;
 
     /// Read the contents of `link` and deserialize them into a stream of JSON
     /// values. The values must each be on a single line; newlines are significant
@@ -44,5 +44,5 @@ pub trait LinkResolver: Send + Sync + 'static {
     fn json_stream<'a>(
         &'a self,
         link: &'a Link,
-    ) -> Pin<Box<dyn Future<Output=Result<JsonValueStream, failure::Error>> + Send + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<JsonValueStream, failure::Error>> + Send + 'a>>;
 }
