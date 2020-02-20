@@ -59,7 +59,7 @@ where
     }
 
     /// Clones but forcing receivers to `None`.
-    fn clone(&self) -> Self {
+    fn clone_no_receivers(&self) -> Self {
         SubgraphAssignmentProvider {
             event_stream: None,
             event_sink: self.event_sink.clone(),
@@ -82,6 +82,7 @@ where
         &'a self,
         id: &'a SubgraphDeploymentId,
     ) -> DynTryFut<'a, (), SubgraphAssignmentProviderError> {
+        let self_clone = self.clone_no_receivers();
         let store = self.store.clone();
         let subgraph_id = id.clone();
 
@@ -115,7 +116,7 @@ where
             subgraph.data_sources.extend(data_sources);
 
             // If subgraph ID already in set
-            if !self
+            if !self_clone
                 .subgraphs_running
                 .lock()
                 .unwrap()
@@ -133,7 +134,7 @@ where
                 subgraph.id.clone(),
                 subgraph.schema.document.clone(),
             );
-            self.store
+            self_clone.store
                 .build_entity_attribute_indexes(&subgraph.id, index_definitions)
                 .map(|_| {
                     info!(
@@ -144,7 +145,7 @@ where
                 .ok();
 
             // Send events to trigger subgraph processing
-            if let Err(e) = self
+            if let Err(e) = self_clone
                 .event_sink
                 .clone()
                 .send(SubgraphAssignmentProviderEvent::SubgraphStart(subgraph))
