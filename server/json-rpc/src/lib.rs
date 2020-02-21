@@ -94,7 +94,7 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
     fn deploy_handler<'a>(
         &'a self,
         params: SubgraphDeployParams,
-    ) -> DynTryFut<'a, Value, jsonrpc_core::Error> {
+    ) -> DynTryFuture<'a, Value, jsonrpc_core::Error> {
         let logger = self.logger.clone();
 
         info!(logger, "Received subgraph_deploy request"; "params" => format!("{:?}", params));

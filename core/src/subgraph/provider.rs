@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 use graph::data::subgraph::schema::attribute_index_definitions;
 use graph::prelude::{
-    DataSourceLoader as _, DynTryFut, GraphQlRunner,
+    DataSourceLoader as _, DynTryFuture, GraphQlRunner,
     SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, *,
 };
 
@@ -80,7 +80,7 @@ where
     fn start<'a>(
         &'a self,
         id: &'a SubgraphDeploymentId,
-    ) -> DynTryFut<'a, (), SubgraphAssignmentProviderError> {
+    ) -> DynTryFuture<'a, (), SubgraphAssignmentProviderError> {
         let self_clone = self.clone_no_receivers();
         let store = self.store.clone();
         let subgraph_id = id.clone();
@@ -96,14 +96,13 @@ where
         let logger = self.logger_factory.subgraph_logger(id);
         let logger_for_resolve = logger.clone();
         let logger_for_err = logger.clone();
-        let resolver = self.resolver.clone();
 
         info!(logger, "Resolve subgraph files using IPFS");
 
         Box::pin(
             async move {
                 let mut subgraph =
-                    SubgraphManifest::resolve(Link { link }, resolver.deref(), &logger_for_resolve)
+                    SubgraphManifest::resolve(Link { link }, self.resolver.deref(), &logger_for_resolve)
                         .map_err(SubgraphAssignmentProviderError::ResolveError)
                         .await?;
 

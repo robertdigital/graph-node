@@ -127,7 +127,7 @@ async fn main() {
                 .long("ipfs")
                 .multiple(true)
                 .value_name("HOST:PORT")
-                .help("HTTP address of IPFS nodes"),
+                .help("HTTP addresses of IPFS nodes"),
         )
         .arg(
             Arg::with_name("http-port")

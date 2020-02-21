@@ -28,7 +28,7 @@ pub trait SubgraphRegistrar: Send + Sync + 'static {
         name: SubgraphName,
         hash: SubgraphDeploymentId,
         assignment_node_id: NodeId,
-    ) -> DynTryFut<'a, (), SubgraphRegistrarError>;
+    ) -> DynTryFuture<'a, (), SubgraphRegistrarError>;
 
     fn remove_subgraph(
         &self,

@@ -299,7 +299,7 @@ where
         name: SubgraphName,
         hash: SubgraphDeploymentId,
         node_id: NodeId,
-    ) -> DynTryFut<'a, (), SubgraphRegistrarError> {
+    ) -> DynTryFuture<'a, (), SubgraphRegistrarError> {
         let logger = self.logger_factory.subgraph_logger(&hash);
 
         async move {

@@ -152,7 +152,7 @@ impl LinkResolverTrait for LinkResolver {
     }
 
     /// Supports links of the form `/ipfs/ipfs_hash` or just `ipfs_hash`.
-    fn cat<'a>(&'a self, logger: &'a Logger, link: &'a Link) -> DynTryFut<'a, Vec<u8>> {
+    fn cat<'a>(&'a self, logger: &'a Logger, link: &'a Link) -> DynTryFuture<'a, Vec<u8>> {
         async move {
             // Discard the `/ipfs/` prefix (if present) to get the hash.
             let path = link.link.trim_start_matches("/ipfs/").to_owned();
@@ -213,7 +213,7 @@ impl LinkResolverTrait for LinkResolver {
         .boxed()
     }
 
-    fn json_stream<'a>(&'a self, link: &'a Link) -> DynTryFut<'a, JsonValueStream> {
+    fn json_stream<'a>(&'a self, link: &'a Link) -> DynTryFuture<'a, JsonValueStream> {
         async move {
             // Discard the `/ipfs/` prefix (if present) to get the hash.
             let path = link.link.trim_start_matches("/ipfs/");
@@ -326,13 +326,6 @@ mod tests {
 
         let stream = LinkResolver::json_stream(&resolver, &Link { link }).await?;
         stream.map_ok(|sv| sv.value).try_collect().await
-        /*
-        let result = Vec::new();
-        while let Some(sv) = stream.next().await {
-            result.push(result?.value);
-        }
-        Ok(result)
-        */
     }
 
     #[tokio::test]

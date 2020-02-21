@@ -809,7 +809,7 @@ async fn query_complexity_subscriptions() {
     };
 
     // This query is exactly at the maximum complexity.
-    execute_subscription(&Subscription { query }, options).unwrap();
+    execute_subscription(&Subscription { query }, options).await.unwrap();
 
     let query = Query {
         schema: Arc::new(api_test_schema()),
